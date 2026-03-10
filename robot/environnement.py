@@ -1,3 +1,6 @@
+from robot import ennemi, projectile, ennemi_nul
+
+
 class Environnement:
     
     def __init__(self, largeur=10, hauteur=10):
@@ -5,6 +8,9 @@ class Environnement:
         self.hauteur = hauteur
         self.robot = None
         self.obstacles = []
+        self.ennemis = []
+        self.projectiles = []
+        self.ennemis_nuls = []
 
     def ajouter_robot(self, robot):
         self.robot = robot
@@ -33,3 +39,33 @@ class Environnement:
                 self.robot.y = old_y
                 self.robot.orientation = old_orientation
                 break
+
+        for ennemi in self.ennemis:
+            ennemi.mettre_a_jour(dt, self.robot, self)
+
+        for ennemi_nul in self.ennemis_nuls:
+            ennemi_nul.mettre_a_jour(dt, self.robot, self)
+
+        # mise à jour projectiles
+        for projectile in self.projectiles:
+            projectile.mettre_a_jour(dt)
+
+        # collision projectile → robot
+        for projectile in self.projectiles:
+            dx = projectile.x - self.robot.x
+            dy = projectile.y - self.robot.y
+            if (dx*dx + dy*dy) <= (projectile.rayon + 0.3)**2:
+                print("Robot touché")
+                projectile.actif = False
+
+            # suppression projectiles inactifs
+            self.projectiles = [p for p in self.projectiles if p.actif]
+    
+    def ajouter_ennemi(self, ennemi):
+            self.ennemis.append(ennemi)
+
+    def ajouter_ennemi_nul(self, ennemi_nul):
+            self.ennemis_nuls.append(ennemi_nul)
+    
+    def ajouter_projectile(self, projectile):
+            self.projectiles.append(projectile)

@@ -41,7 +41,28 @@ class VuePygame:
 
         pygame.draw.line(self.screen, (255, 0, 0), (x, y), (x_dir, y_dir), 3)
 
-        pygame.display.flip()
+        
 
+            # ennemis
+        for ennemi in environnement.ennemis:
+            x, y = self.convertir_coordonnees(ennemi.x, ennemi.y)
+            r = int(ennemi.rayon * self.scale)
+            pygame.draw.circle(self.screen, (255, 255, 0), (x, y), r)
+
+           # ennemis_nul
+        for ennemi_nul in environnement.ennemis_nuls:
+            x, y = self.convertir_coordonnees(ennemi_nul.x, ennemi_nul.y)
+            r = int(ennemi_nul.rayon * self.scale)
+            pygame.draw.circle(self.screen, (0, 255, 0), (x, y), r)
+
+        # projectiles
+        for projectile in environnement.projectiles:
+            x, y = self.convertir_coordonnees(projectile.x, projectile.y)
+            r = int(projectile.rayon * self.scale)
+            pygame.draw.circle(self.screen, (0, 0, 0), (x, y), r)
+
+
+        pygame.display.flip()
+        
     def tick(self, fps=60):
         self.clock.tick(fps)
