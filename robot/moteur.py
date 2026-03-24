@@ -26,8 +26,15 @@ class MoteurDifferentiel(Moteur):
     def mettre_a_jour(self, robot, dt):
         theta = robot.orientation
         robot.orientation = theta + self.omega * dt
-        robot.x = robot.x + self.v * cos(theta) * dt
-        robot.y = robot.y + self.v * sin(theta) * dt
+
+        vitesse_reelle = self.v + robot.bonus_vitesse
+        if self.v < 0:
+            vitesse_reelle = self.v - robot.bonus_vitesse
+        if self.v == 0:
+            vitesse_reelle = 0
+
+        robot.x = robot.x + vitesse_reelle * cos(theta) * dt
+        robot.y = robot.y + vitesse_reelle * sin(theta) * dt
 
 
 class MoteurOmnidirectionnel(Moteur):

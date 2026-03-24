@@ -6,29 +6,24 @@ class Controleur(ABC):
 
     @abstractmethod
     def lire_commande(self):
-        """Retourne une commande pour le robot"""
         pass
 
 
 class ControleurTerminal(Controleur):
 
     def lire_commande(self):
-        print("Commande differentiel : v omega (ex: 1.0 0.5)")
-        entree = input("> ")
+        return {
+            "v": 0.0,
+            "omega": 0.0,
+            "tirer": False,
+            "recommencer": False,
+            "choix_upgrade": None
+        }
 
-        try:
-            v_str, omega_str = entree.split()
-            v = float(v_str)
-            omega = float(omega_str)
-        except ValueError:
-            print("Commande invalide")
-            return {"v": 0.0, "omega": 0.0}
 
-        return {"v": v, "omega": omega}
-    
 class ControleurClavierPygame(Controleur):
-    
-    def __init__(self, v_max=2.0, omega_max=2.0):
+
+    def __init__(self, v_max=3.0, omega_max=3.0):
         self.v_max = v_max
         self.omega_max = omega_max
 
@@ -39,13 +34,30 @@ class ControleurClavierPygame(Controleur):
         v = 0.0
         omega = 0.0
 
-        if keys[pygame.K_UP]:
+        if keys[pygame.K_UP] or keys[pygame.K_z] or keys[pygame.K_w]:
             v = self.v_max
-        if keys[pygame.K_DOWN]:
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
             v = -self.v_max
-        if keys[pygame.K_LEFT]:
+        if keys[pygame.K_LEFT] or keys[pygame.K_q] or keys[pygame.K_a]:
             omega = self.omega_max
-        if keys[pygame.K_RIGHT]:
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             omega = -self.omega_max
 
-        return {"v": v, "omega": omega}
+        tirer = keys[pygame.K_SPACE]
+        recommencer = keys[pygame.K_r]
+
+        choix_upgrade = None
+        if keys[pygame.K_1]:
+            choix_upgrade = 1
+        elif keys[pygame.K_2]:
+            choix_upgrade = 2
+        elif keys[pygame.K_3]:
+            choix_upgrade = 3
+
+        return {
+            "v": v,
+            "omega": omega,
+            "tirer": tirer,
+            "recommencer": recommencer,
+            "choix_upgrade": choix_upgrade
+        }
