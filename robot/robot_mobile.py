@@ -21,12 +21,16 @@ class RobotMobile:
         self.cooldown_degats = 0.0
         self.temps_invulnerable = 0.6
 
+        # Shield
+        self.shield_actif = False
+        self.shield_duree = 0.0
+
         # progression
         self.niveau = 1
         self.experience = 0
         self.experience_pour_niveau_suivant = 5
 
-        # stats améliorable
+        # stats améliorables
         self.bonus_vitesse = 0.0
         self.degats_projectile = 1
         self.taille_projectile = 0.10
@@ -79,6 +83,12 @@ class RobotMobile:
         if self.cooldown_degats > 0:
             self.cooldown_degats -= dt
 
+        if self.shield_actif:
+            self.shield_duree -= dt
+            if self.shield_duree <= 0:
+                self.shield_actif = False
+                self.shield_duree = 0.0
+
     def peut_tirer(self):
         return self.cooldown_tir <= 0.0
 
@@ -86,12 +96,19 @@ class RobotMobile:
         self.cooldown_tir = self.cadence_tir
 
     def peut_subir_degats(self):
+        # Invincible si shield actif OU en cooldown normal
+        if self.shield_actif:
+            return False
         return self.cooldown_degats <= 0.0
 
     def subir_degats(self, degats):
         if self.peut_subir_degats():
             self.vie -= degats
             self.cooldown_degats = self.temps_invulnerable
+
+    def activer_shield(self, duree=10.0):
+        self.shield_actif = True
+        self.shield_duree = duree
 
     def est_vivant(self):
         return self.vie > 0
@@ -102,13 +119,11 @@ class RobotMobile:
 
     def verifier_montee_niveau(self):
         montee = False
-
         while self.experience >= self.experience_pour_niveau_suivant:
             self.experience -= self.experience_pour_niveau_suivant
             self.niveau += 1
             self.experience_pour_niveau_suivant = int(self.experience_pour_niveau_suivant * 1.4) + 2
             montee = True
-
         return montee
 
     def soigner(self, quantite):
@@ -117,20 +132,15 @@ class RobotMobile:
     def appliquer_amelioration(self, nom):
         if nom == "cadence":
             self.cadence_tir = max(0.08, self.cadence_tir - 0.03)
-
         elif nom == "vitesse":
             self.bonus_vitesse += 0.4
-
         elif nom == "vitalite":
             self.vie_max += 1
             self.vie += 1
-
         elif nom == "degats":
             self.degats_projectile += 1
-
         elif nom == "taille":
             self.taille_projectile += 0.03
-
         elif nom == "projectile_speed":
             self.vitesse_projectile += 1.0
 
@@ -147,6 +157,9 @@ class RobotMobile:
 
         self.cooldown_degats = 0.0
         self.temps_invulnerable = 0.6
+
+        self.shield_actif = False
+        self.shield_duree = 0.0
 
         self.niveau = 1
         self.experience = 0

@@ -3,7 +3,7 @@ import random
 from robot.projectile import Projectile
 from robot.ennemi import Ennemi
 from robot.ennemi_nul import Ennemi_nul
-from robot.item import ItemExperience
+from robot.item import ItemExperience, ItemSoin, ItemShield
 
 
 class Environnement:
@@ -119,20 +119,16 @@ class Environnement:
     def appliquer_choix_amelioration(self, index):
         if not self.en_pause_upgrade:
             return
-
         if index < 0 or index >= len(self.choix_ameliorations):
             return
-
         nom, _ = self.choix_ameliorations[index]
         self.robot.appliquer_amelioration(nom)
-
         self.en_pause_upgrade = False
         self.choix_ameliorations = []
 
     def mettre_a_jour(self, dt, tirer_joueur=False, choix_upgrade=None):
         if self.robot is None:
             return
-
         if self.game_over:
             return
 
@@ -211,10 +207,7 @@ class Environnement:
         vy = math.sin(angle) * vitesse_proj
 
         projectile = Projectile(
-            x=x,
-            y=y,
-            vx=vx,
-            vy=vy,
+            x=x, y=y, vx=vx, vy=vy,
             rayon=self.robot.taille_projectile,
             owner="joueur",
             degats=self.robot.degats_projectile,
@@ -225,6 +218,14 @@ class Environnement:
 
     def faire_tomber_xp(self, x, y, valeur=1):
         self.ajouter_item(ItemExperience(x, y, valeur=valeur))
+
+    def faire_tomber_item_bonus(self, x, y):
+        """10% de chance de faire tomber un item bonus (soin ou shield, 50/50)."""
+        if random.random() < 0.10:
+            if random.random() < 0.5:
+                self.ajouter_item(ItemSoin(x, y))
+            else:
+                self.ajouter_item(ItemShield(x, y))
 
     def gerer_collisions(self):
         for ennemi_nul in self.ennemis_nuls:
@@ -264,6 +265,7 @@ class Environnement:
                         if not ennemi_nul.actif:
                             self.score += 10
                             self.faire_tomber_xp(ennemi_nul.x, ennemi_nul.y, valeur=1)
+                            self.faire_tomber_item_bonus(ennemi_nul.x, ennemi_nul.y)
                         break
 
                 if not projectile.actif:
@@ -279,18 +281,30 @@ class Environnement:
                         if not ennemi.actif:
                             self.score += 20
                             self.faire_tomber_xp(ennemi.x, ennemi.y, valeur=2)
+                            self.faire_tomber_item_bonus(ennemi.x, ennemi.y)
                         break
 
+        # Ramassage des items
         for item in self.items:
-            if item.actif and self.collision_cercles(
+            if not item.actif:
+                continue
+            if self.collision_cercles(
                 self.robot.x, self.robot.y, self.robot.rayon,
                 item.x, item.y, item.rayon
             ):
                 item.actif = False
-                montee = self.robot.ajouter_experience(item.valeur)
-                if montee:
-                    self.en_pause_upgrade = True
-                    self.generer_choix_ameliorations()
+
+                if isinstance(item, ItemExperience):
+                    montee = self.robot.ajouter_experience(item.valeur)
+                    if montee:
+                        self.en_pause_upgrade = True
+                        self.generer_choix_ameliorations()
+
+                elif isinstance(item, ItemSoin):
+                    self.robot.soigner(1)
+
+                elif isinstance(item, ItemShield):
+                    self.robot.activer_shield(duree=8.0)
 
     @staticmethod
     def collision_cercles(x1, y1, r1, x2, y2, r2):
