@@ -3,18 +3,20 @@ import random
 from robot.projectile import Projectile
 from robot.ennemi import Ennemi
 from robot.ennemi_nul import Ennemi_nul
+from robot.boss import Boss
 from robot.item import ItemExperience, ItemSoin, ItemShield
 
 
 class Environnement:
 
-    def __init__(self, largeur=10, hauteur=10):
+    def __init__(self, largeur=30, hauteur=30):
         self.largeur = largeur
         self.hauteur = hauteur
         self.robot = None
         self.obstacles = []
         self.ennemis = []
         self.ennemis_nuls = []
+        self.boss = None          # boss actif (None si pas de boss)
         self.projectiles = []
         self.items = []
 
@@ -27,6 +29,9 @@ class Environnement:
 
         self.en_pause_upgrade = False
         self.choix_ameliorations = []
+
+        self.en_pause_arme = False
+        self.choix_armes = []
 
     def ajouter_robot(self, robot):
         self.robot = robot
@@ -51,6 +56,7 @@ class Environnement:
         self.ennemis_nuls.clear()
         self.projectiles.clear()
         self.items.clear()
+        self.boss = None
 
         self.vague = 0
         self.score = 0
@@ -59,6 +65,8 @@ class Environnement:
         self.temps_avant_prochaine_vague = 0.0
         self.en_pause_upgrade = False
         self.choix_ameliorations = []
+        self.en_pause_arme = False
+        self.choix_armes = []
 
         if self.robot is not None:
             self.robot.reinitialiser()
@@ -67,43 +75,78 @@ class Environnement:
 
     def lancer_vague_suivante(self):
         self.vague += 1
-        total_ennemis = self.vague
 
-        nb_tireurs = self.vague // 4
-        if nb_tireurs > total_ennemis:
-            nb_tireurs = total_ennemis
+        # Vague boss (multiple de 10)
+        if self.vague % 10 == 0:
+            x, y = self.position_spawn(loin=True)
+            self.boss = Boss(x, y, vague=self.vague)
+            # Quelques ennemis normaux en plus pour le challenge
+            nb_extra = self.vague // 5
+            for _ in range(nb_extra):
+                bx, by = self.position_spawn()
+                self.ajouter_ennemi_nul(Ennemi_nul(bx, by, vitesse=1.6 + 0.04 * self.vague))
+        else:
+            total_ennemis = self.vague
+            nb_tireurs = self.vague // 4
+            nb_contact = total_ennemis - nb_tireurs
 
-        nb_contact = total_ennemis - nb_tireurs
-
-        for _ in range(nb_contact):
-            x, y = self.position_spawn()
-            self.ajouter_ennemi_nul(Ennemi_nul(x, y, vitesse=1.4 + 0.05 * self.vague))
-
-        for _ in range(nb_tireurs):
-            x, y = self.position_spawn()
-            self.ajouter_ennemi(Ennemi(x, y, vitesse=0.9 + 0.03 * self.vague))
+            for _ in range(nb_contact):
+                x, y = self.position_spawn()
+                self.ajouter_ennemi_nul(Ennemi_nul(x, y, vitesse=1.4 + 0.05 * self.vague))
+            for _ in range(nb_tireurs):
+                x, y = self.position_spawn()
+                self.ajouter_ennemi(Ennemi(x, y, vitesse=0.9 + 0.03 * self.vague))
 
         self.attente_prochaine_vague = False
         self.temps_avant_prochaine_vague = 0.0
 
-    def position_spawn(self):
-        marge = 0.8
-        cote = random.choice(["haut", "bas", "gauche", "droite"])
-
-        if cote == "haut":
-            x = random.uniform(-self.largeur / 2 + marge, self.largeur / 2 - marge)
-            y = self.hauteur / 2 - marge
-        elif cote == "bas":
-            x = random.uniform(-self.largeur / 2 + marge, self.largeur / 2 - marge)
-            y = -self.hauteur / 2 + marge
-        elif cote == "gauche":
-            x = -self.largeur / 2 + marge
-            y = random.uniform(-self.hauteur / 2 + marge, self.hauteur / 2 - marge)
+    def position_spawn(self, loin=False):
+        """Spawn sur les bords de la map, loin du robot."""
+        if self.robot is not None:
+            cx, cy = self.robot.x, self.robot.y
         else:
-            x = self.largeur / 2 - marge
-            y = random.uniform(-self.hauteur / 2 + marge, self.hauteur / 2 - marge)
+            cx, cy = 0.0, 0.0
 
-        return x, y
+        marge_bord = 1.5
+        # On essaie de spawner assez loin du robot
+        dist_min = 8.0 if not loin else 14.0
+
+        for _ in range(30):
+            cote = random.choice(["haut", "bas", "gauche", "droite"])
+            demi_l = self.largeur / 2
+            demi_h = self.hauteur / 2
+
+            if cote == "haut":
+                x = random.uniform(-demi_l + marge_bord, demi_l - marge_bord)
+                y = random.uniform(cy + dist_min, demi_h - marge_bord)
+                y = min(y, demi_h - marge_bord)
+            elif cote == "bas":
+                x = random.uniform(-demi_l + marge_bord, demi_l - marge_bord)
+                y = random.uniform(-demi_h + marge_bord, cy - dist_min)
+                y = max(y, -demi_h + marge_bord)
+            elif cote == "gauche":
+                x = random.uniform(-demi_l + marge_bord, cx - dist_min)
+                x = max(x, -demi_l + marge_bord)
+                y = random.uniform(-demi_h + marge_bord, demi_h - marge_bord)
+            else:
+                x = random.uniform(cx + dist_min, demi_l - marge_bord)
+                x = min(x, demi_l - marge_bord)
+                y = random.uniform(-demi_h + marge_bord, demi_h - marge_bord)
+
+            if math.hypot(x - cx, y - cy) >= dist_min:
+                return x, y
+
+        # Fallback
+        angle = random.uniform(0, 2 * math.pi)
+        r = dist_min + random.uniform(0, 3)
+        return (
+            max(-self.largeur / 2 + 1, min(self.largeur / 2 - 1, cx + math.cos(angle) * r)),
+            max(-self.hauteur / 2 + 1, min(self.hauteur / 2 - 1, cy + math.sin(angle) * r))
+        )
+
+    # ------------------------------------------------------------------
+    # Upgrades
+    # ------------------------------------------------------------------
 
     def generer_choix_ameliorations(self):
         pool = [
@@ -126,10 +169,34 @@ class Environnement:
         self.en_pause_upgrade = False
         self.choix_ameliorations = []
 
-    def mettre_a_jour(self, dt, tirer_joueur=False, choix_upgrade=None):
-        if self.robot is None:
+    def generer_choix_armes(self):
+        from robot.armes import RayonLaser, LanceFlammes
+        self.choix_armes = [
+            (RayonLaser.NOM, RayonLaser.LABEL, RayonLaser.DESCRIPTION),
+            (LanceFlammes.NOM, LanceFlammes.LABEL, LanceFlammes.DESCRIPTION),
+        ]
+
+    def appliquer_choix_arme(self, index):
+        if not self.en_pause_arme:
             return
-        if self.game_over:
+        if index < 0 or index >= len(self.choix_armes):
+            return
+        nom, _, _ = self.choix_armes[index]
+        self.robot.appliquer_amelioration(nom)
+        self.en_pause_arme = False
+        self.choix_armes = []
+
+    # ------------------------------------------------------------------
+    # Boucle principale
+    # ------------------------------------------------------------------
+
+    def mettre_a_jour(self, dt, tirer_joueur=False, choix_upgrade=None):
+        if self.robot is None or self.game_over:
+            return
+
+        if self.en_pause_arme:
+            if choix_upgrade is not None:
+                self.appliquer_choix_arme(choix_upgrade - 1)
             return
 
         if self.en_pause_upgrade:
@@ -142,6 +209,9 @@ class Environnement:
         old_orientation = self.robot.orientation
 
         self.robot.mettre_a_jour(dt)
+
+        if self.robot.arme_speciale is not None:
+            self.robot.arme_speciale.mettre_a_jour(dt, self.robot, self)
 
         demi_l = self.largeur / 2
         demi_h = self.hauteur / 2
@@ -160,17 +230,18 @@ class Environnement:
 
         for ennemi in self.ennemis:
             ennemi.mettre_a_jour(dt, self.robot, self)
-
         for ennemi_nul in self.ennemis_nuls:
             ennemi_nul.mettre_a_jour(dt, self.robot, self)
+        if self.boss is not None and self.boss.actif:
+            self.boss.mettre_a_jour(dt, self.robot, self)
 
         for projectile in self.projectiles:
             projectile.mettre_a_jour(dt)
-
         for item in self.items:
             item.mettre_a_jour(dt, self.robot)
 
-        marge = 1.0
+        # Désactiver projectiles hors map
+        marge = 2.0
         for projectile in self.projectiles:
             if (projectile.x < -demi_l - marge or projectile.x > demi_l + marge or
                     projectile.y < -demi_h - marge or projectile.y > demi_h + marge):
@@ -182,12 +253,19 @@ class Environnement:
         self.ennemis_nuls = [e for e in self.ennemis_nuls if e.actif]
         self.projectiles = [p for p in self.projectiles if p.actif]
         self.items = [i for i in self.items if i.actif]
+        if self.boss is not None and not self.boss.actif:
+            self.boss = None
 
         if not self.robot.est_vivant():
             self.game_over = True
             return
 
-        if len(self.ennemis) == 0 and len(self.ennemis_nuls) == 0:
+        tout_mort = (
+            len(self.ennemis) == 0
+            and len(self.ennemis_nuls) == 0
+            and self.boss is None
+        )
+        if tout_mort:
             if not self.attente_prochaine_vague:
                 self.attente_prochaine_vague = True
                 self.temps_avant_prochaine_vague = 3.0
@@ -199,19 +277,17 @@ class Environnement:
     def tirer_joueur(self):
         angle = self.robot.orientation
         vitesse_proj = self.robot.vitesse_projectile
-
         offset = self.robot.rayon + 0.12
         x = self.robot.x + math.cos(angle) * offset
         y = self.robot.y + math.sin(angle) * offset
         vx = math.cos(angle) * vitesse_proj
         vy = math.sin(angle) * vitesse_proj
-
         projectile = Projectile(
             x=x, y=y, vx=vx, vy=vy,
             rayon=self.robot.taille_projectile,
             owner="joueur",
             degats=self.robot.degats_projectile,
-            duree_vie=2.0
+            duree_vie=3.5
         )
         self.ajouter_projectile(projectile)
         self.robot.tirer()
@@ -220,7 +296,6 @@ class Environnement:
         self.ajouter_item(ItemExperience(x, y, valeur=valeur))
 
     def faire_tomber_item_bonus(self, x, y):
-        """10% de chance de faire tomber un item bonus (soin ou shield, 50/50)."""
         if random.random() < 0.10:
             if random.random() < 0.5:
                 self.ajouter_item(ItemSoin(x, y))
@@ -228,6 +303,7 @@ class Environnement:
                 self.ajouter_item(ItemShield(x, y))
 
     def gerer_collisions(self):
+        # Ennemis au contact
         for ennemi_nul in self.ennemis_nuls:
             if self.collision_cercles(
                 self.robot.x, self.robot.y, self.robot.rayon,
@@ -242,6 +318,17 @@ class Environnement:
             ):
                 self.robot.subir_degats(1)
 
+        # Boss au contact
+        if self.boss is not None and self.boss.actif:
+            if self.collision_cercles(
+                self.robot.x, self.robot.y, self.robot.rayon,
+                self.boss.x, self.boss.y, self.boss.rayon
+            ):
+                if self.boss.cooldown_contact <= 0:
+                    self.robot.subir_degats(self.boss.degats_contact)
+                    self.boss.cooldown_contact = 1.0
+
+        # Projectiles
         for projectile in self.projectiles:
             if not projectile.actif:
                 continue
@@ -255,6 +342,24 @@ class Environnement:
                     projectile.actif = False
 
             elif projectile.owner == "joueur":
+                # Boss
+                if self.boss is not None and self.boss.actif:
+                    if self.collision_cercles(
+                        self.boss.x, self.boss.y, self.boss.rayon,
+                        projectile.x, projectile.y, projectile.rayon
+                    ):
+                        self.boss.subir_degats(projectile.degats)
+                        projectile.actif = False
+                        if not self.boss.actif:
+                            self.score += 500
+                            # Beaucoup d'XP et d'items
+                            for _ in range(8):
+                                ox = self.boss.x + random.uniform(-1.5, 1.5)
+                                oy = self.boss.y + random.uniform(-1.5, 1.5)
+                                self.faire_tomber_xp(ox, oy, valeur=3)
+                            self.ajouter_item(ItemSoin(self.boss.x, self.boss.y))
+                        continue
+
                 for ennemi_nul in self.ennemis_nuls:
                     if ennemi_nul.actif and self.collision_cercles(
                         ennemi_nul.x, ennemi_nul.y, ennemi_nul.rayon,
@@ -284,7 +389,7 @@ class Environnement:
                             self.faire_tomber_item_bonus(ennemi.x, ennemi.y)
                         break
 
-        # Ramassage des items
+        # Items
         for item in self.items:
             if not item.actif:
                 continue
@@ -293,16 +398,17 @@ class Environnement:
                 item.x, item.y, item.rayon
             ):
                 item.actif = False
-
                 if isinstance(item, ItemExperience):
                     montee = self.robot.ajouter_experience(item.valeur)
                     if montee:
-                        self.en_pause_upgrade = True
-                        self.generer_choix_ameliorations()
-
+                        if self.robot.niveau_est_multiple_de_5():
+                            self.en_pause_arme = True
+                            self.generer_choix_armes()
+                        else:
+                            self.en_pause_upgrade = True
+                            self.generer_choix_ameliorations()
                 elif isinstance(item, ItemSoin):
                     self.robot.soigner(1)
-
                 elif isinstance(item, ItemShield):
                     self.robot.activer_shield(duree=8.0)
 

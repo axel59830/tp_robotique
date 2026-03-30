@@ -25,12 +25,15 @@ class RobotMobile:
         self.shield_actif = False
         self.shield_duree = 0.0
 
-        # progression
+        # Arme spéciale (None, RayonLaser ou LanceFlammes)
+        self.arme_speciale = None
+
+        # Progression
         self.niveau = 1
         self.experience = 0
         self.experience_pour_niveau_suivant = 5
 
-        # stats améliorables
+        # Stats améliorables
         self.bonus_vitesse = 0.0
         self.degats_projectile = 1
         self.taille_projectile = 0.10
@@ -89,6 +92,8 @@ class RobotMobile:
                 self.shield_actif = False
                 self.shield_duree = 0.0
 
+        # L'arme spéciale est mise à jour depuis l'environnement (besoin du contexte)
+
     def peut_tirer(self):
         return self.cooldown_tir <= 0.0
 
@@ -96,7 +101,6 @@ class RobotMobile:
         self.cooldown_tir = self.cadence_tir
 
     def peut_subir_degats(self):
-        # Invincible si shield actif OU en cooldown normal
         if self.shield_actif:
             return False
         return self.cooldown_degats <= 0.0
@@ -106,9 +110,13 @@ class RobotMobile:
             self.vie -= degats
             self.cooldown_degats = self.temps_invulnerable
 
-    def activer_shield(self, duree=10.0):
+    def activer_shield(self, duree=8.0):
         self.shield_actif = True
         self.shield_duree = duree
+
+    def equiper_arme(self, arme):
+        """Equipe une arme spéciale (remplace l'existante)."""
+        self.arme_speciale = arme
 
     def est_vivant(self):
         return self.vie > 0
@@ -126,10 +134,14 @@ class RobotMobile:
             montee = True
         return montee
 
+    def niveau_est_multiple_de_5(self):
+        return self.niveau % 5 == 0
+
     def soigner(self, quantite):
         self.vie = min(self.vie_max, self.vie + quantite)
 
     def appliquer_amelioration(self, nom):
+        from robot.armes import RayonLaser, LanceFlammes
         if nom == "cadence":
             self.cadence_tir = max(0.08, self.cadence_tir - 0.03)
         elif nom == "vitesse":
@@ -143,13 +155,17 @@ class RobotMobile:
             self.taille_projectile += 0.03
         elif nom == "projectile_speed":
             self.vitesse_projectile += 1.0
+        elif nom == "laser":
+            self.equiper_arme(RayonLaser())
+        elif nom == "lance_flammes":
+            self.equiper_arme(LanceFlammes())
 
     def reinitialiser(self):
         self.x = 0.0
         self.y = 0.0
         self.orientation = 0.0
 
-        self.vie_max = 5
+        self.vie_max = 10
         self.vie = self.vie_max
 
         self.cooldown_tir = 0.0
@@ -160,6 +176,8 @@ class RobotMobile:
 
         self.shield_actif = False
         self.shield_duree = 0.0
+
+        self.arme_speciale = None
 
         self.niveau = 1
         self.experience = 0

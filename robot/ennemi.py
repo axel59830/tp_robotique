@@ -34,7 +34,7 @@ class Ennemi:
         if distance <= 1e-6:
             return
 
-        vitesse_proj = 4.0
+        vitesse_proj = 2.5          
         vx = (dx / distance) * vitesse_proj
         vy = (dy / distance) * vitesse_proj
 
@@ -46,7 +46,7 @@ class Ennemi:
             rayon=0.1,
             owner="ennemi",
             degats=1,
-            duree_vie=4.0
+            duree_vie=5.0           
         )
         environnement.ajouter_projectile(projectile)
 

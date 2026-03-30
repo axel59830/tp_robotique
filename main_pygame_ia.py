@@ -6,20 +6,6 @@ from robot.vue_pygame import VuePygame
 from robot.environnement import Environnement
 
 
-def get_upgrade_rects(largeur, hauteur):
-    """Retourne les 3 rectangles cliquables du menu upgrade (mêmes coords que vue_pygame)."""
-    boite_largeur = 560
-    boite_hauteur = 320
-    boite_x = (largeur - boite_largeur) // 2
-    boite_y = (hauteur - boite_hauteur) // 2
-
-    rects = []
-    for i in range(3):
-        yy = boite_y + 95 + i * 65
-        rects.append(pygame.Rect(boite_x + 40, yy, 480, 45))
-    return rects
-
-
 def main():
     robot = RobotMobile(moteur=MoteurDifferentiel())
     env = Environnement()
@@ -39,7 +25,7 @@ def main():
 
     running = True
     while running:
-        choix_upgrade = None  # sera défini par clic ou touche
+        choix_upgrade = None
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -51,29 +37,34 @@ def main():
                 if event.key == pygame.K_r and env.game_over:
                     env.reinitialiser()
 
-            # --- Clic souris pour choisir une upgrade ---
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if env.en_pause_upgrade:
-                    mx, my = event.pos
-                    rects = get_upgrade_rects(vue.largeur, vue.hauteur)
-                    for i, rect in enumerate(rects):
+                mx, my = event.pos
+
+                if env.en_pause_arme:
+                    # Clic sur menu arme spéciale (2 choix)
+                    for i, rect in enumerate(vue.get_arme_rects()):
                         if rect.collidepoint(mx, my):
-                            choix_upgrade = i + 1  # 1-indexed
+                            choix_upgrade = i + 1
+                            break
+
+                elif env.en_pause_upgrade:
+                    # Clic sur menu upgrade normal (3 choix)
+                    for i, rect in enumerate(vue.get_upgrade_rects()):
+                        if rect.collidepoint(mx, my):
+                            choix_upgrade = i + 1
                             break
 
                 elif env.game_over:
                     env.reinitialiser()
 
-        # Commande IA (mouvement + tir uniquement, pas d'upgrade)
         commande = controleur.lire_commande()
-
         robot.commander(v=commande["v"], omega=commande["omega"])
 
         dt = vue.tick(60)
         env.mettre_a_jour(
             dt,
             tirer_joueur=commande["tirer"],
-            choix_upgrade=choix_upgrade,   # vient du clic joueur
+            choix_upgrade=choix_upgrade,
         )
 
         vue.dessiner_environnement(env)
