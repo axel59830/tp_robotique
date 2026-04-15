@@ -25,8 +25,8 @@ class RobotMobile:
         self.shield_actif = False
         self.shield_duree = 0.0
 
-        # Arme spéciale (None, RayonLaser ou LanceFlammes)
-        self.arme_speciale = None
+        # Armes spéciales (liste d'armes cumulées)
+        self.armes_speciales = []
 
         # Progression
         self.niveau = 1
@@ -115,8 +115,8 @@ class RobotMobile:
         self.shield_duree = duree
 
     def equiper_arme(self, arme):
-        """Equipe une arme spéciale (remplace l'existante)."""
-        self.arme_speciale = arme
+        """Ajoute une arme spéciale à la liste des armes cumulées."""
+        self.armes_speciales.append(arme)
 
     def est_vivant(self):
         return self.vie > 0
@@ -137,11 +137,14 @@ class RobotMobile:
     def niveau_est_multiple_de_5(self):
         return self.niveau % 5 == 0
 
+    def niveau_est_multiple_de_3(self):
+        return self.niveau % 3 == 0
+
     def soigner(self, quantite):
         self.vie = min(self.vie_max, self.vie + quantite)
 
     def appliquer_amelioration(self, nom):
-        from robot.armes import RayonLaser, LanceFlammes
+        from robot.armes import LaserGlace, LanceFlammes, Surf
         if nom == "cadence":
             self.cadence_tir = max(0.08, self.cadence_tir - 0.03)
         elif nom == "vitesse":
@@ -155,10 +158,12 @@ class RobotMobile:
             self.taille_projectile += 0.03
         elif nom == "projectile_speed":
             self.vitesse_projectile += 1.0
-        elif nom == "laser":
-            self.equiper_arme(RayonLaser())
+        elif nom == "laser_glace":
+            self.equiper_arme(LaserGlace())
         elif nom == "lance_flammes":
             self.equiper_arme(LanceFlammes())
+        elif nom == "surf":
+            self.equiper_arme(Surf())
 
     def reinitialiser(self):
         self.x = 0.0
@@ -177,7 +182,7 @@ class RobotMobile:
         self.shield_actif = False
         self.shield_duree = 0.0
 
-        self.arme_speciale = None
+        self.armes_speciales = []
 
         self.niveau = 1
         self.experience = 0

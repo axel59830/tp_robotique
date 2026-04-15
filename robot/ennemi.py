@@ -34,7 +34,7 @@ class Ennemi:
         if distance <= 1e-6:
             return
 
-        vitesse_proj = 2.5          
+        vitesse_proj = 1.8          
         vx = (dx / distance) * vitesse_proj
         vy = (dy / distance) * vitesse_proj
 

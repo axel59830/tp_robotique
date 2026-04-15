@@ -6,24 +6,26 @@ class ControleurIA(Controleur):
     """
     Priorités de décision (ordre décroissant) :
 
-    1. ESQUIVE PROJECTILE — calcule un vecteur de répulsion cumulé de TOUS les
-                            projectiles dangereux → déplacement diagonal fluide
-    2. FUITE MASSE        — pression vectorielle ennemis trop forte → recul
-    3. ITEM               — item proche et zone sûre → avance vers lui
-    4. CIBLAGE            — attaque l'ennemi proche ou le boss
+    1. ESQUIVE PROJECTILE améliorée avec prédiction de trajectoire
+    2. FUITE MASSE        - pression vectorielle ennemis trop forte
+    3. ITEM               - item proche et zone sûre
+    4. CIBLAGE            - attaque l'ennemi proche ou le boss
     """
 
-    # ── Paramètres d'esquive ────────────────────────────────────────────
-    RAYON_DANGER_PROJ   = 3.5   # rayon de détection (unités monde)
-    TEMPS_REACTION_PROJ = 1.4   # fenêtre de réaction (secondes)
-    CONE_DANGER_PROJ    = 0.55  # demi-angle du cône de danger (radians, ~31°)
-    SEUIL_ESQUIVE       = 0.25  # magnitude min du vecteur cumulé pour déclencher
+    # Paramètres d'esquive optimisés pour meilleure réactivité
+    RAYON_DANGER_PROJ_BASE   = 5.0   # rayon de détection augmenté
+    TEMPS_REACTION_PROJ_BASE = 3.0   # fenêtre de réaction augmentée
+    CONE_DANGER_PROJ_BASE    = 0.8   # cône de danger élargi
+    SEUIL_ESQUIVE_BASE       = 0.15  # seuil plus sensible
+    
+    # Paramètres simplifiés
+    FACTEUR_VITESSE_ROBOT = 0.2   # influence réduite pour plus de stabilité
+    FACTEUR_DENSITE_PROJ  = 0.15  # ajustement plus modéré
+    PREDICTION_STEPS      = 6     # moins de pas pour plus de rapidité
 
     def __init__(self, v_max=3.0, omega_max=3.5,
-                 seuil_fuite=2.2,
-                 rayon_influence=4.0,
-                 distance_attraction_item=4.0,
-                 seuil_danger_item=1.8):
+                 seuil_fuite=2.2, rayon_influence=4.0,
+                 distance_attraction_item=4.0, seuil_danger_item=1.8):
         self.v_max = v_max
         self.omega_max = omega_max
         self.seuil_fuite = seuil_fuite
@@ -31,13 +33,15 @@ class ControleurIA(Controleur):
         self.distance_attraction_item = distance_attraction_item
         self.seuil_danger_item = seuil_danger_item
         self.env = None
+        
+        # Paramètres adaptatifs calculés
+        self.rayon_danger_proj = self.RAYON_DANGER_PROJ_BASE
+        self.temps_reaction_proj = self.TEMPS_REACTION_PROJ_BASE
+        self.cone_danger_proj = self.CONE_DANGER_PROJ_BASE
+        self.seuil_esquive = self.SEUIL_ESQUIVE_BASE
 
     def set_environnement(self, env):
         self.env = env
-
-    # ------------------------------------------------------------------
-    # Interface obligatoire
-    # ------------------------------------------------------------------
 
     def lire_commande(self):
         if self.env is None or self.env.game_over:
@@ -48,7 +52,7 @@ class ControleurIA(Controleur):
         robot = self.env.robot
         boss = self.env.boss if (self.env.boss is not None and self.env.boss.actif) else None
         ennemi_proche = self._ennemi_le_plus_proche_tous()
-        item_proche   = self._item_le_plus_proche()
+        item_proche = self._item_le_plus_proche()
 
         dist_ennemi = (
             math.hypot(ennemi_proche.x - robot.x, ennemi_proche.y - robot.y)
@@ -61,122 +65,177 @@ class ControleurIA(Controleur):
 
         cible_tir = self._choisir_cible_tir(boss, ennemi_proche)
 
-        # ── CAS 1 : ESQUIVE ─────────────────────────────────────────────
-        evade_x, evade_y, force = self._vecteur_esquive(robot)
-        if force > self.SEUIL_ESQUIVE:
+        # CAS 1 : ESQUIVE AMÉLIORÉE
+        self._mettre_a_jour_parametres_adaptatifs(robot)
+        evade_x, evade_y, force = self._vecteur_esquive_ameliore(robot)
+        if force > self.seuil_esquive:
             return self._commande_esquive(robot, evade_x, evade_y, force, cible_tir)
 
-        # ── CAS 2 : FUITE MASSE ─────────────────────────────────────────
+        # CAS 2 : FUITE MASSE
         fuite_x, fuite_y, pression = self._vecteur_fuite()
         if pression > 0.6:
             return self._commande_fuite(robot, fuite_x, fuite_y, cible_tir)
 
-        # ── CAS 3 : ITEM ────────────────────────────────────────────────
+        # CAS 3 : ITEM
         if (item_proche is not None
                 and dist_item < self.distance_attraction_item
                 and dist_ennemi > self.seuil_danger_item):
             return self._commande_vers_item(robot, item_proche, cible_tir)
 
-        # ── CAS 4 : ATTAQUE ─────────────────────────────────────────────
+        # CAS 4 : ATTAQUE
         if cible_tir is not None:
             dist_sec = 2.5 if cible_tir is boss else 0.5
             return self._commande_vers_cible(robot, cible_tir, dist_sec)
 
         return self._commande_nulle()
 
-    # ------------------------------------------------------------------
-    # Choix cible tir
-    # ------------------------------------------------------------------
+    def _mettre_a_jour_parametres_adaptatifs(self, robot):
+        """Ajuste dynamiquement les paramètres d'esquive selon l'état du jeu."""
+        nb_proj_ennemis = sum(1 for p in self.env.projectiles if p.actif and p.owner == "ennemi")
+        
+        # Ajustements plus simples et prévisibles
+        facteur_densite = 1.0 + self.FACTEUR_DENSITE_PROJ * min(nb_proj_ennemis / 3.0, 1.0)
+        
+        vitesse_robot = math.hypot(getattr(robot, 'vx', 0), getattr(robot, 'vy', 0))
+        facteur_vitesse = 1.0 + self.FACTEUR_VITESSE_ROBOT * (vitesse_robot / self.v_max)
+        
+        # Paramètres plus réactifs
+        self.rayon_danger_proj = self.RAYON_DANGER_PROJ_BASE * facteur_densite
+        self.temps_reaction_proj = self.TEMPS_REACTION_PROJ_BASE * facteur_vitesse
+        self.cone_danger_proj = self.CONE_DANGER_PROJ_BASE * (1.0 + 0.05 * nb_proj_ennemis)
+        self.seuil_esquive = self.SEUIL_ESQUIVE_BASE * (1.0 + 0.03 * nb_proj_ennemis)
 
-    def _choisir_cible_tir(self, boss, ennemi_proche):
-        robot = self.env.robot
-        if ennemi_proche is not None:
-            dist = math.hypot(ennemi_proche.x - robot.x, ennemi_proche.y - robot.y)
-            if dist < 3.5:
-                return ennemi_proche
-        if boss is not None:
-            return boss
-        return ennemi_proche
-
-    # ------------------------------------------------------------------
-    # Esquive vectorielle (cumulée sur TOUS les projectiles dangereux)
-    # ------------------------------------------------------------------
-
-    def _vecteur_esquive(self, robot):
-        """
-        Pour chaque projectile ennemi dans le rayon et le cône de danger,
-        calcule un vecteur de répulsion perpendiculaire à sa trajectoire,
-        pondéré par l'urgence (1 / temps_impact²).
-
-        Retourne (ex, ey normalisés, magnitude brute).
-        """
+    def _vecteur_esquive_ameliore(self, robot):
+        """Version simplifiée et plus réactive."""
         ex, ey = 0.0, 0.0
-
+        
+        # Traitement direct des projectiles sans surcharge
         for proj in self.env.projectiles:
             if not proj.actif or proj.owner != "ennemi":
                 continue
-
-            # Vecteur projectile → robot
-            dx = robot.x - proj.x
-            dy = robot.y - proj.y
-            dist = math.hypot(dx, dy)
-
-            if dist > self.RAYON_DANGER_PROJ or dist < 1e-6:
+                
+            menace = self._evaluer_menace_projectile(robot, proj)
+            if menace is None:
                 continue
-
-            vit = math.hypot(proj.vx, proj.vy)
-            if vit < 1e-6:
-                continue
-
-            # Direction normalisée du projectile
-            pnx = proj.vx / vit
-            pny = proj.vy / vit
-
-            # Le projectile converge-t-il vers le robot ?
-            dot = dx * pnx + dy * pny   # > 0 si le proj se rapproche
-            if dot <= 0:
-                continue
-
-            # Angle entre la direction du proj et la direction proj→robot
-            # Si l'angle est grand, le proj passe loin
-            cross = dx * pny - dy * pnx          # distance perpendiculaire signée
-            perp_dist = abs(cross)
-            rayon_col = robot.rayon + proj.rayon
-
-            # Cône de danger : perp_dist / dist = sin(angle)
-            if perp_dist > dist * math.sin(self.CONE_DANGER_PROJ) + rayon_col:
-                continue
-
-            temps_impact = dot / vit   # approximation
-            if temps_impact > self.TEMPS_REACTION_PROJ:
-                continue
-
-            # Urgence : plus le projectile est proche et rapide, plus le poids est fort
-            urgence = 1.0 / max(0.05, temps_impact ** 2)
-
-            # Perpendiculaire dans le bon sens (s'éloigner de la trajectoire)
-            # cross > 0 → robot est "à gauche" du proj → esquiver à gauche (-pny, pnx)
-            # cross < 0 → robot est "à droite" du proj → esquiver à droite (pny, -pnx)
-            if cross >= 0:
-                perp_x, perp_y = -pny,  pnx
-            else:
-                perp_x, perp_y =  pny, -pnx
-
-            # Bonus : si on s'éloigne aussi du bord, on ne change pas de côté
-            perp_x, perp_y = self._ajuster_pour_bords(robot, perp_x, perp_y)
-
-            ex += perp_x * urgence
-            ey += perp_y * urgence
-
+                
+            # Calcul immédiat de la direction d'esquive
+            evade_dir = self._calculer_direction_esquive_optimale(robot, proj, menace)
+            urgence = menace['urgence']
+            
+            ex += evade_dir[0] * urgence
+            ey += evade_dir[1] * urgence
+        
         magnitude = math.hypot(ex, ey)
         if magnitude > 1e-6:
             return ex / magnitude, ey / magnitude, magnitude
         return 0.0, 0.0, 0.0
+    
+    def _evaluer_menace_projectile(self, robot, proj):
+        """Évalue la menace d'un projectile avec prédiction de trajectoire."""
+        dx = robot.x - proj.x
+        dy = robot.y - proj.y
+        dist = math.hypot(dx, dy)
+        
+        if dist > self.rayon_danger_proj or dist < 1e-6:
+            return None
+            
+        vit = math.hypot(proj.vx, proj.vy)
+        if vit < 1e-6:
+            return None
+        
+        position_predite = self._predire_collision(robot, proj)
+        if position_predite is None:
+            return None
+            
+        temps_collision, distance_collision = position_predite
+        
+        if temps_collision > self.temps_reaction_proj:
+            return None
+            
+        urgence_base = 1.0 / max(0.05, temps_collision ** 2)
+        facteur_proximite = 1.0 + (1.0 - min(distance_collision / 2.0, 1.0))
+        
+        angle_vers_robot = math.atan2(dy, dx)
+        angle_proj = math.atan2(proj.vy, proj.vx)
+        diff_angle = abs(self._normaliser_angle(angle_vers_robot - angle_proj))
+        facteur_surprise = 1.5 if diff_angle < math.pi/4 else 1.0
+        
+        urgence = urgence_base * facteur_proximite * facteur_surprise
+        
+        return {
+            'projectile': proj,
+            'urgence': urgence,
+            'temps_collision': temps_collision,
+            'distance_collision': distance_collision,
+            'angle_arrivee': math.atan2(proj.vy, proj.vx)
+        }
+    
+    def _predire_collision(self, robot, proj):
+        """Prédiction simplifiée et plus rapide."""
+        dt = 0.08  # Pas plus grand pour plus de rapidité
+        
+        for i in range(self.PREDICTION_STEPS):
+            t = i * dt
+            
+            # Position future du projectile
+            proj_x = proj.x + proj.vx * t
+            proj_y = proj.y + proj.vy * t
+            
+            # Position future estimée du robot
+            robot_vx = getattr(robot, 'vx', 0)
+            robot_vy = getattr(robot, 'vy', 0)
+            robot_x = robot.x + robot_vx * t * 0.5  # Réduction de l'inertie
+            robot_y = robot.y + robot_vy * t * 0.5
+            
+            dx = robot_x - proj_x
+            dy = robot_y - proj_y
+            dist_future = math.hypot(dx, dy)
+            
+            # Marge de sécurité augmentée
+            if dist_future <= robot.rayon + proj.rayon + 0.2:
+                return t, dist_future
+                
+        return None
+    
+    def _calculer_direction_esquive_optimale(self, robot, proj, menace):
+        """Calcule la meilleure direction d'esquive pour un projectile donné."""
+        dx = robot.x - proj.x
+        dy = robot.y - proj.y
+        
+        vit = math.hypot(proj.vx, proj.vy)
+        pnx = proj.vx / vit
+        pny = proj.vy / vit
+        
+        cross = dx * pny - dy * pnx
+        
+        if cross >= 0:
+            perp_x, perp_y = -pny, pnx
+        else:
+            perp_x, perp_y = pny, -pnx
+        
+        angle_arrivee = menace['angle_arrivee']
+        angle_vers_robot = math.atan2(dy, dx)
+        diff_angle = abs(self._normaliser_angle(angle_arrivee - angle_vers_robot))
+        
+        if diff_angle < math.pi/6:  # Projectile venant de face
+            recul_x = -pnx * 0.3
+            recul_y = -pny * 0.3
+            evade_x = perp_x * 0.7 + recul_x
+            evade_y = perp_y * 0.7 + recul_y
+        else:
+            evade_x, evade_y = perp_x, perp_y
+        
+        norm = math.hypot(evade_x, evade_y)
+        if norm > 1e-6:
+            evade_x /= norm
+            evade_y /= norm
+        
+        evade_x, evade_y = self._ajuster_pour_bords(robot, evade_x, evade_y)
+        
+        return evade_x, evade_y
 
     def _ajuster_pour_bords(self, robot, px, py):
-        """
-        Si le vecteur d'esquive pousse vers un bord, on l'inverse.
-        """
+        """Ajuste la direction pour éviter les bords et les obstacles."""
         marge = 2.0
         demi_l = self.env.largeur / 2
         demi_h = self.env.hauteur / 2
@@ -188,34 +247,54 @@ class ControleurIA(Controleur):
             px = -px
         if future_y < -demi_h + marge or future_y > demi_h - marge:
             py = -py
-
+        
+        px, py = self._ajuster_pour_obstacles(robot, px, py)
+        return px, py
+    
+    def _ajuster_pour_obstacles(self, robot, px, py):
+        """Ajuste la direction d'esquive pour éviter les obstacles."""
+        if not self.env.obstacles:
+            return px, py
+        
+        test_distance = 1.5
+        test_x = robot.x + px * test_distance
+        test_y = robot.y + py * test_distance
+        
+        for obs in self.env.obstacles:
+            if obs.collision(test_x, test_y, robot.rayon + 0.2):
+                dx = test_x - obs.x
+                dy = test_y - obs.y
+                dist = math.hypot(dx, dy)
+                
+                if dist > 1e-6:
+                    px = dx / dist
+                    py = dy / dist
+                else:
+                    import random
+                    angle = random.uniform(0, 2 * math.pi)
+                    px = math.cos(angle)
+                    py = math.sin(angle)
+                break
+        
         return px, py
 
     def _commande_esquive(self, robot, evade_x, evade_y, force, cible_tir):
-        """
-        Déplacement dans la direction d'esquive cumulée.
-        L'orientation reste vers la cible de tir pour continuer à tirer.
-        La vitesse est proportionnelle à l'urgence (plafonnée à v_max).
-        """
-        # Orientation toujours vers la cible
+        """Déplacement d'esquive plus réactif."""
         omega, tirer = self._orienter_vers(robot, cible_tir)
 
-        # Direction d'esquive souhaitée
         angle_esquive = math.atan2(evade_y, evade_x)
         diff = self._normaliser_angle(angle_esquive - robot.orientation)
 
-        # Vitesse : avance ou recule selon si la direction est devant/derrière
-        vitesse = min(self.v_max * 1.2, self.v_max * (1.0 + force * 0.3))  # léger boost d'urgence
+        # Vitesse boostée pour esquive plus rapide
+        vitesse = min(self.v_max * 1.4, self.v_max * (1.0 + force * 0.4))
+        
+        # Logique simplifiée : toujours aller dans la direction d'esquive
         if abs(diff) < math.pi / 2:
             v = vitesse
         else:
-            v = -vitesse
+            v = -vitesse * 0.8  # Recul moins rapide
 
         return self._cmd(v, omega, tirer)
-
-    # ------------------------------------------------------------------
-    # Autres comportements
-    # ------------------------------------------------------------------
 
     def _commande_fuite(self, robot, fuite_x, fuite_y, cible_tir):
         omega, tirer = self._orienter_vers(robot, cible_tir)
@@ -244,10 +323,6 @@ class ControleurIA(Controleur):
         dist = math.hypot(cible.x - robot.x, cible.y - robot.y)
         v = self.v_max if dist > dist_securite else 0.0
         return self._cmd(v, omega, tirer)
-
-    # ------------------------------------------------------------------
-    # Fuite vectorielle (masse ennemie)
-    # ------------------------------------------------------------------
 
     def _vecteur_fuite(self):
         robot = self.env.robot
@@ -278,9 +353,15 @@ class ControleurIA(Controleur):
             pression = 0.0
         return fx, fy, pression
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+    def _choisir_cible_tir(self, boss, ennemi_proche):
+        robot = self.env.robot
+        if ennemi_proche is not None:
+            dist = math.hypot(ennemi_proche.x - robot.x, ennemi_proche.y - robot.y)
+            if dist < 3.5:
+                return ennemi_proche
+        if boss is not None:
+            return boss
+        return ennemi_proche
 
     def _orienter_vers(self, robot, cible):
         if cible is None:
@@ -327,4 +408,3 @@ class ControleurIA(Controleur):
     def _commande_nulle():
         return {"v": 0.0, "omega": 0.0, "tirer": False,
                 "recommencer": False, "choix_upgrade": None}
-    

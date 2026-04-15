@@ -1,7 +1,7 @@
 import pygame
 import math
 from robot.item import ItemExperience, ItemSoin, ItemShield
-from robot.armes import RayonLaser, LanceFlammes
+from robot.armes import LaserGlace, LanceFlammes, Surf
 from robot.boss import Boss
 
 
@@ -26,41 +26,70 @@ class VuePygame:
         self.COULEUR_SOL = (28, 32, 22)
         self.COULEUR_GRILLE = (38, 44, 30)
         self.TAILLE_TUILE = 80  # pixels
+        
+        # Chargement des images
+        self.img_ennemi_nul = self._charger_image("img/ennemi_nul.png", taille=(40, 40))
+        self.img_ennemi = self._charger_image("img/ennemi.png", taille=(45, 45))
+        self.img_boss = self._charger_image("img/boss.png", taille=(80, 80))
 
     # ------------------------------------------------------------------
-    # Conversion coordonnées monde → écran (caméra centrée sur le robot)
+    # Gestion des images
+    # ------------------------------------------------------------------
+    
+    def _charger_image(self, chemin, taille=None):
+        """Charge une image avec gestion d'erreur et redimensionnement optionnel."""
+        try:
+            image = pygame.image.load(chemin).convert_alpha()
+            if taille:
+                image = pygame.transform.scale(image, taille)
+            return image
+        except pygame.error as e:
+            print(f"Erreur lors du chargement de l'image {chemin}: {e}")
+            return None
+
+    # ------------------------------------------------------------------
+    # Conversion coordonnées
     # ------------------------------------------------------------------
 
-    def monde_vers_ecran(self, wx, wy, cam_x, cam_y):
-        """Convertit une position monde en position écran."""
-        sx = int(self.largeur / 2 + (wx - cam_x) * self.scale)
-        sy = int(self.hauteur / 2 - (wy - cam_y) * self.scale)
-        return sx, sy
+    def monde_vers_ecran(self, x_monde, y_monde, cam_x, cam_y):
+        """Convertit les coordonnées monde vers écran."""
+        x_ecran = int((x_monde - cam_x) * self.scale + self.largeur / 2)
+        y_ecran = int(-(y_monde - cam_y) * self.scale + self.hauteur / 2)
+        return x_ecran, y_ecran
+
+    # ------------------------------------------------------------------
+    # Dessin sol et grille
+    # ------------------------------------------------------------------
 
     def dessiner_sol(self, cam_x, cam_y, env):
-        """Fond sombre avec grille, limites de map visibles."""
+        """Dessine le sol avec une grille."""
         self.screen.fill(self.COULEUR_SOL)
+        taille_tuile_monde = self.TAILLE_TUILE / self.scale
 
         # Grille
-        taille_tuile_monde = self.TAILLE_TUILE / self.scale
-        # Première tuile visible
-        ox = cam_x - (self.largeur / 2) / self.scale
-        oy = cam_y - (self.hauteur / 2) / self.scale
+        x_start = int(cam_x - self.largeur / (2 * self.scale))
+        x_end = int(cam_x + self.largeur / (2 * self.scale))
+        x = int(x_start / taille_tuile_monde) * taille_tuile_monde
 
-        x_start = math.floor(ox / taille_tuile_monde) * taille_tuile_monde
-        y_start = math.floor(oy / taille_tuile_monde) * taille_tuile_monde
-
-        x = x_start
-        while True:
+        while x <= x_end:
             sx, _ = self.monde_vers_ecran(x, 0, cam_x, cam_y)
+            if sx < 0:
+                x += taille_tuile_monde
+                continue
             if sx > self.largeur:
                 break
             pygame.draw.line(self.screen, self.COULEUR_GRILLE, (sx, 0), (sx, self.hauteur), 1)
             x += taille_tuile_monde
 
-        y = y_start
-        while True:
+        y = y_start = int(cam_y + self.hauteur / (2 * self.scale))
+        y_end = int(cam_y - self.hauteur / (2 * self.scale))
+        y = int(y_start / taille_tuile_monde) * taille_tuile_monde
+
+        while y >= y_end:
             _, sy = self.monde_vers_ecran(0, y, cam_x, cam_y)
+            if sy < 0:
+                y -= taille_tuile_monde
+                continue
             if sy > self.hauteur:
                 break
             pygame.draw.line(self.screen, self.COULEUR_GRILLE, (0, sy), (self.largeur, sy), 1)
@@ -116,14 +145,31 @@ class VuePygame:
         for ennemi in environnement.ennemis:
             ex, ey = self.monde_vers_ecran(ennemi.x, ennemi.y, cam_x, cam_y)
             er = max(4, int(ennemi.rayon * self.scale))
-            pygame.draw.circle(self.screen, (255, 150, 0), (ex, ey), er)
+            
+            # Dessiner l'image ennemi si disponible, sinon cercle de secours
+            if self.img_ennemi:
+                # Centrer l'image sur la position de l'ennemi
+                img_rect = self.img_ennemi.get_rect(center=(ex, ey))
+                self.screen.blit(self.img_ennemi, img_rect)
+            else:
+                # Cercle orange de secours si l'image ne charge pas
+                pygame.draw.circle(self.screen, (255, 150, 0), (ex, ey), er)
+            
             # Petite barre de vie
             self._dessiner_mini_vie(ex, ey, er, ennemi.vie, ennemi.vie)  # 2 pv max
 
         for ennemi_nul in environnement.ennemis_nuls:
             ex, ey = self.monde_vers_ecran(ennemi_nul.x, ennemi_nul.y, cam_x, cam_y)
             er = max(4, int(ennemi_nul.rayon * self.scale))
-            pygame.draw.circle(self.screen, (200, 40, 40), (ex, ey), er)
+            
+            # Dessiner l'image ennemi_nul si disponible, sinon cercle de secours
+            if self.img_ennemi_nul:
+                # Centrer l'image sur la position de l'ennemi
+                img_rect = self.img_ennemi_nul.get_rect(center=(ex, ey))
+                self.screen.blit(self.img_ennemi_nul, img_rect)
+            else:
+                # Cercle rouge de secours si l'image ne charge pas
+                pygame.draw.circle(self.screen, (200, 40, 40), (ex, ey), er)
 
         # Boss
         if environnement.boss is not None and environnement.boss.actif:
@@ -199,9 +245,15 @@ class VuePygame:
         pygame.draw.circle(surf, (180, 0, 0, 60), (bx, by), aura_r)
         self.screen.blit(surf, (0, 0))
 
-        # Corps du boss (violet foncé)
-        pygame.draw.circle(self.screen, (80, 0, 120), (bx, by), br)
-        pygame.draw.circle(self.screen, (160, 0, 200), (bx, by), br, 4)
+        # Dessiner l'image boss si disponible, sinon cercles de secours
+        if self.img_boss:
+            # Centrer l'image sur la position du boss
+            img_rect = self.img_boss.get_rect(center=(bx, by))
+            self.screen.blit(self.img_boss, img_rect)
+        else:
+            # Cercles violets de secours si l'image ne charge pas
+            pygame.draw.circle(self.screen, (80, 0, 120), (bx, by), br)
+            pygame.draw.circle(self.screen, (160, 0, 200), (bx, by), br, 4)
 
         # Barre de vie du boss (large, en bas de l'écran)
         self.dessiner_barre_vie_boss(boss)
@@ -242,29 +294,49 @@ class VuePygame:
         pygame.draw.rect(self.screen, (220, 60, 60), (bx, by, rempli, bh))
 
     def dessiner_effets_arme(self, robot, cam_x, cam_y):
-        arme = robot.arme_speciale
-        if arme is None:
+        if not robot.armes_speciales:
             return
         rx, ry = self.monde_vers_ecran(robot.x, robot.y, cam_x, cam_y)
+        
+        # Dessiner les effets de toutes les armes cumulées
+        for arme in robot.armes_speciales:
+            if isinstance(arme, LaserGlace) and arme.en_flash:
+                portee_px = int(20.0 * self.scale)
+                angle = robot.orientation
+                ex = rx + int(portee_px * math.cos(angle))
+                ey = ry - int(portee_px * math.sin(angle))
+                alpha = int(255 * (arme.flash_duree / arme.flash_max))
+                surf = pygame.Surface((self.largeur, self.hauteur), pygame.SRCALPHA)
+                pygame.draw.line(surf, (0, 255, 255, alpha), (rx, ry), (ex, ey), 8)
+                pygame.draw.line(surf, (255, 255, 255, alpha), (rx, ry), (ex, ey), 2)
+                self.screen.blit(surf, (0, 0))
 
-        if isinstance(arme, RayonLaser) and arme.en_flash:
-            portee_px = int(20.0 * self.scale)
-            angle = robot.orientation
-            ex = rx + int(portee_px * math.cos(angle))
-            ey = ry - int(portee_px * math.sin(angle))
-            alpha = int(255 * (arme.flash_duree / arme.flash_max))
-            surf = pygame.Surface((self.largeur, self.hauteur), pygame.SRCALPHA)
-            pygame.draw.line(surf, (0, 255, 255, alpha), (rx, ry), (ex, ey), 8)
-            pygame.draw.line(surf, (255, 255, 255, alpha), (rx, ry), (ex, ey), 2)
-            self.screen.blit(surf, (0, 0))
+            elif isinstance(arme, Surf) and arme.en_surf:
+                # Dessiner le rectangle bleu du surf
+                surf_x_px = int(arme.surf_x * self.scale)
+                surf_y_px = int(arme.surf_y * self.scale)
+                surf_w_px = int(arme.LARGEUR * self.scale)
+                surf_h_px = int(arme.HAUTEUR * self.scale)
+                
+                # Convertir les coordonnées monde vers écran
+                surf_screen_x, surf_screen_y = self.monde_vers_ecran(arme.surf_x, arme.surf_y, robot.x, robot.y)
+                
+                # Dessiner le rectangle bleu semi-transparent
+                surf_rect = pygame.Surface((surf_w_px, surf_h_px), pygame.SRCALPHA)
+                surf_rect.fill((0, 150, 255, 180))
+                
+                # Centrer le rectangle sur la position du surf
+                rect_x = surf_screen_x - surf_w_px // 2
+                rect_y = surf_screen_y - surf_h_px // 2
+                self.screen.blit(surf_rect, (rect_x, rect_y))
 
-        elif isinstance(arme, LanceFlammes) and arme.en_explosion:
-            rayon_px = int(arme.RAYON_EXPLOSION * self.scale)
-            alpha = int(180 * (arme.explosion_duree / arme.explosion_max))
-            surf = pygame.Surface((self.largeur, self.hauteur), pygame.SRCALPHA)
-            pygame.draw.circle(surf, (255, 120, 0, alpha), (rx, ry), rayon_px)
-            pygame.draw.circle(surf, (255, 60, 0, min(255, alpha + 60)), (rx, ry), rayon_px, 5)
-            self.screen.blit(surf, (0, 0))
+            elif isinstance(arme, LanceFlammes) and arme.en_explosion:
+                rayon_px = int(arme.RAYON_EXPLOSION * self.scale)
+                alpha = int(180 * (arme.explosion_duree / arme.explosion_max))
+                surf = pygame.Surface((self.largeur, self.hauteur), pygame.SRCALPHA)
+                pygame.draw.circle(surf, (255, 120, 0, alpha), (rx, ry), rayon_px)
+                pygame.draw.circle(surf, (255, 60, 0, min(255, alpha + 60)), (rx, ry), rayon_px, 5)
+                self.screen.blit(surf, (0, 0))
 
     # ------------------------------------------------------------------
     # HUD
@@ -298,8 +370,10 @@ class VuePygame:
             txt(f"SHIELD  {robot.shield_duree:.1f}s", 15, y_hud, (80, 180, 255))
             y_hud += 26
 
-        if robot.arme_speciale is not None:
-            self.dessiner_barre_arme(robot.arme_speciale, y_hud)
+        # Afficher toutes les armes spéciales cumulées
+        for arme in robot.armes_speciales:
+            self.dessiner_barre_arme(arme, y_hud)
+            y_hud += 26
 
         # Minimap
         self.dessiner_minimap(environnement)
@@ -369,12 +443,15 @@ class VuePygame:
 
     def dessiner_barre_arme(self, arme, y):
         x, w, h = 15, 240, 16
-        if isinstance(arme, RayonLaser):
+        if isinstance(arme, LaserGlace):
             couleur = (0, 220, 255)
-            label = f"Laser  {max(0, arme.cooldown):.1f}s"
+            label = f"Laser glace  {max(0, arme.cooldown):.1f}s"
+        elif isinstance(arme, Surf):
+            couleur = (0, 150, 255)
+            label = f"Surf  {max(0, arme.cooldown):.1f}s"
         else:
             couleur = (255, 120, 0)
-            label = f"Flammes  {max(0, arme.cooldown):.1f}s"
+            label = f"Lance-flammes  {max(0, arme.cooldown):.1f}s"
         pygame.draw.rect(self.screen, (40, 40, 40), (x, y, w, h), border_radius=5)
         pygame.draw.rect(self.screen, couleur, (x, y, int(w * arme.ratio_cooldown), h), border_radius=5)
         pygame.draw.rect(self.screen, (80, 80, 80), (x, y, w, h), 1, border_radius=5)
@@ -392,6 +469,11 @@ class VuePygame:
         self.screen.blit(t1, t1.get_rect(center=(cx, cy - 40)))
         self.screen.blit(t2, t2.get_rect(center=(cx, cy + 15)))
         self.screen.blit(t3, t3.get_rect(center=(cx, cy + 50)))
+
+    def _dessiner_overlay(self):
+        overlay = pygame.Surface((self.largeur, self.hauteur), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        self.screen.blit(overlay, (0, 0))
 
     # ------------------------------------------------------------------
     # Menus upgrade / arme
@@ -423,21 +505,36 @@ class VuePygame:
             f"Niveau {environnement.robot.niveau} atteint !  Choisis ton arme :", True, (60, 60, 60))
         self.screen.blit(sous, sous.get_rect(centerx=bx + bw // 2, y=by + 65))
         mx, my = pygame.mouse.get_pos()
-        for i, (_, label, description) in enumerate(environnement.choix_armes):
+        for i, (nom, label, description) in enumerate(environnement.choix_armes):
             yy = by + 105 + i * 100
             rect = pygame.Rect(bx + 40, yy, 480, 80)
-            couleur = (255, 240, 180) if rect.collidepoint(mx, my) else (245, 230, 200)
+            
+            # Vérifier si cette arme est déjà équipée (cumulée)
+            arme_deja_equipee = any(arme.NOM == nom for arme in environnement.robot.armes_speciales)
+            
+            # Couleur différente si l'arme est déjà équipée
+            if arme_deja_equipee:
+                couleur = (150, 150, 150)  # Gris pour arme déjà équipée
+                couleur_texte = (100, 100, 100)
+            elif rect.collidepoint(mx, my):
+                couleur = (255, 240, 180)  # Orange au survol
+                couleur_texte = (120, 60, 0)
+            else:
+                couleur = (245, 230, 200)  # Beige normal
+                couleur_texte = (120, 60, 0)
+            
             pygame.draw.rect(self.screen, couleur, rect, border_radius=12)
             pygame.draw.rect(self.screen, (180, 120, 0), rect, 2, border_radius=12)
-            self.screen.blit(self.font.render(f"{i+1} - {label}", True, (120, 60, 0)), (bx + 60, yy + 10))
+            
+            # Texte de l'arme
+            texte_arme = f"{i+1} - {label}"
+            if arme_deja_equipee:
+                texte_arme += " (ÉQUIPÉE)"
+            
+            self.screen.blit(self.font.render(texte_arme, True, couleur_texte), (bx + 60, yy + 10))
             self.screen.blit(self.small_font.render(description, True, (80, 60, 40)), (bx + 60, yy + 42))
         self.screen.blit(self.small_font.render("Clique sur une arme", True, (100, 70, 0)),
                          (bx + 195, by + bh - 40))
-
-    def _dessiner_overlay(self):
-        overlay = pygame.Surface((self.largeur, self.hauteur), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
-        self.screen.blit(overlay, (0, 0))
 
     def _boite_menu(self, hauteur):
         bw, bh = 560, hauteur
@@ -457,7 +554,7 @@ class VuePygame:
     def get_arme_rects(self):
         _, by, _, _ = self._boite_menu(360)
         bx = (self.largeur - 560) // 2
-        return [pygame.Rect(bx + 40, by + 105 + i * 100, 480, 80) for i in range(2)]
+        return [pygame.Rect(bx + 40, by + 105 + i * 100, 480, 80) for i in range(3)]
 
     def dessiner_obstacle_circulaire(self, obstacle):
         pass  # à implémenter si besoin avec cam_x/cam_y

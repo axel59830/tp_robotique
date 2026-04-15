@@ -170,10 +170,11 @@ class Environnement:
         self.choix_ameliorations = []
 
     def generer_choix_armes(self):
-        from robot.armes import RayonLaser, LanceFlammes
+        from robot.armes import LaserGlace, LanceFlammes, Surf
         self.choix_armes = [
-            (RayonLaser.NOM, RayonLaser.LABEL, RayonLaser.DESCRIPTION),
+            (LaserGlace.NOM, LaserGlace.LABEL, LaserGlace.DESCRIPTION),
             (LanceFlammes.NOM, LanceFlammes.LABEL, LanceFlammes.DESCRIPTION),
+            (Surf.NOM, Surf.LABEL, Surf.DESCRIPTION),
         ]
 
     def appliquer_choix_arme(self, index):
@@ -182,6 +183,8 @@ class Environnement:
         if index < 0 or index >= len(self.choix_armes):
             return
         nom, _, _ = self.choix_armes[index]
+        
+        # Permettre le changement d'arme même si le robot en a déjà une
         self.robot.appliquer_amelioration(nom)
         self.en_pause_arme = False
         self.choix_armes = []
@@ -210,8 +213,9 @@ class Environnement:
 
         self.robot.mettre_a_jour(dt)
 
-        if self.robot.arme_speciale is not None:
-            self.robot.arme_speciale.mettre_a_jour(dt, self.robot, self)
+        # Mettre à jour toutes les armes spéciales cumulées
+        for arme in self.robot.armes_speciales:
+            arme.mettre_a_jour(dt, self.robot, self)
 
         demi_l = self.largeur / 2
         demi_h = self.hauteur / 2
@@ -401,12 +405,9 @@ class Environnement:
                 if isinstance(item, ItemExperience):
                     montee = self.robot.ajouter_experience(item.valeur)
                     if montee:
-                        if self.robot.niveau_est_multiple_de_5():
+                        if self.robot.niveau_est_multiple_de_3():
                             self.en_pause_arme = True
                             self.generer_choix_armes()
-                        else:
-                            self.en_pause_upgrade = True
-                            self.generer_choix_ameliorations()
                 elif isinstance(item, ItemSoin):
                     self.robot.soigner(1)
                 elif isinstance(item, ItemShield):
