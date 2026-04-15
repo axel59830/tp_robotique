@@ -29,6 +29,7 @@ class VuePygame:
         
         # Chargement des images
         self.img_robot = self._charger_image("img/robot_mobile.png", taille=(50, 50))
+        self.img_robot_allie = self._charger_image("img/robot_allie.png", taille=(35, 35))
         self.img_ennemi_nul = self._charger_image("img/ennemi_nul.png", taille=(40, 40))
         self.img_ennemi = self._charger_image("img/ennemi.png", taille=(45, 45))
         self.img_boss = self._charger_image("img/boss.png", taille=(80, 80))
@@ -236,6 +237,14 @@ class VuePygame:
         x_dir = rx + int((r + 10) * math.cos(robot.orientation))
         y_dir = ry - int((r + 10) * math.sin(robot.orientation))
         pygame.draw.line(self.screen, (255, 60, 60), (rx, ry), (x_dir, y_dir), 3)
+
+        # Dessiner la zone capturable
+        if environnement.zone_capturable and environnement.zone_capturable.actif:
+            environnement.zone_capturable.dessiner(self, cam_x, cam_y)
+
+        # Dessiner le robot allié
+        if environnement.robot_allie and environnement.robot_allie.actif:
+            environnement.robot_allie.dessiner(self, cam_x, cam_y)
 
         # HUD
         self.dessiner_hud(environnement)

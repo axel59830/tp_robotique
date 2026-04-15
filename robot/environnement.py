@@ -5,6 +5,8 @@ from robot.ennemi import Ennemi
 from robot.ennemi_nul import Ennemi_nul
 from robot.boss import Boss
 from robot.item import ItemExperience, ItemSoin, ItemShield
+from robot.zone_capturable import ZoneCapturable
+from robot.robot_allie import RobotAllie
 
 
 class Environnement:
@@ -13,6 +15,8 @@ class Environnement:
         self.largeur = largeur
         self.hauteur = hauteur
         self.robot = None
+        self.robot_allie = None
+        self.zone_capturable = None
         self.obstacles = []
         self.ennemis = []
         self.ennemis_nuls = []
@@ -75,6 +79,13 @@ class Environnement:
 
     def lancer_vague_suivante(self):
         self.vague += 1
+
+        # Vague 8 : créer une zone capturable
+        if self.vague == 8 and self.zone_capturable is None:
+            # Créer la zone capturable près du centre
+            x = random.uniform(-5, 5)
+            y = random.uniform(-5, 5)
+            self.zone_capturable = ZoneCapturable(x, y, rayon=5.0, temps_capture=5.0)
 
         # Vague boss (multiple de 10)
         if self.vague % 10 == 0:
@@ -217,6 +228,14 @@ class Environnement:
         for arme in self.robot.armes_speciales:
             arme.mettre_a_jour(dt, self.robot, self)
 
+        # Mettre à jour la zone capturable
+        if self.zone_capturable and self.zone_capturable.actif:
+            capture_reussie = self.zone_capturable.mettre_a_jour(dt, self.robot)
+            if capture_reussie and self.robot_allie is None:
+                # Créer le robot allié à la position de la zone
+                self.robot_allie = RobotAllie(self.zone_capturable.x, self.zone_capturable.y)
+                self.score += 100  # Bonus pour la capture
+
         demi_l = self.largeur / 2
         demi_h = self.hauteur / 2
         self.robot.x = max(-demi_l + self.robot.rayon, min(demi_l - self.robot.rayon, self.robot.x))
@@ -238,6 +257,10 @@ class Environnement:
             ennemi_nul.mettre_a_jour(dt, self.robot, self)
         if self.boss is not None and self.boss.actif:
             self.boss.mettre_a_jour(dt, self.robot, self)
+
+        # Mettre à jour le robot allié
+        if self.robot_allie and self.robot_allie.actif:
+            self.robot_allie.mettre_a_jour(dt, self.robot, self)
 
         for projectile in self.projectiles:
             projectile.mettre_a_jour(dt)
@@ -345,7 +368,7 @@ class Environnement:
                     self.robot.subir_degats(projectile.degats)
                     projectile.actif = False
 
-            elif projectile.owner == "joueur":
+            elif projectile.owner == "joueur" or projectile.owner == "allie":
                 # Boss
                 if self.boss is not None and self.boss.actif:
                     if self.collision_cercles(

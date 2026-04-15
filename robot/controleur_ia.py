@@ -71,6 +71,15 @@ class ControleurIA(Controleur):
         if force > self.seuil_esquive:
             return self._commande_esquive(robot, evade_x, evade_y, force, cible_tir)
 
+        # CAS 1.5 : ZONE CAPTURABLE (priorité haute)
+        if getattr(self.env, 'zone_capturable', None) and self.env.zone_capturable.actif:
+            zone = self.env.zone_capturable
+            dist_zone = math.hypot(zone.x - robot.x, zone.y - robot.y)
+            
+            # Si le robot n'est pas dans la zone, se diriger vers elle
+            if dist_zone > zone.rayon + robot.rayon:
+                return self._commande_vers_zone(robot, zone, cible_tir)
+
         # CAS 2 : FUITE MASSE
         fuite_x, fuite_y, pression = self._vecteur_fuite()
         if pression > 0.6:
@@ -390,6 +399,23 @@ class ControleurIA(Controleur):
         if not items:
             return None
         return min(items, key=lambda i: math.hypot(i.x - robot.x, i.y - robot.y))
+
+    def _commande_vers_zone(self, robot, zone, cible_tir):
+        """Commande pour se diriger vers la zone capturable."""
+        # Calculer l'angle vers la zone
+        dx = zone.x - robot.x
+        dy = zone.y - robot.y
+        angle_vers_zone = math.atan2(dy, dx)
+        
+        # Calculer l'erreur d'angle
+        angle_erreur = self._normaliser_angle(angle_vers_zone - robot.orientation)
+        
+        # Se déplacer vers la zone avec vitesse maximale
+        v = self.v_max
+        # Correction proportionnelle pour l'orientation
+        omega = max(-self.omega_max, min(self.omega_max, 3.0 * angle_erreur))
+        
+        return self._cmd(v, omega, cible_tir is not None and robot.peut_tirer())
 
     @staticmethod
     def _normaliser_angle(a):
