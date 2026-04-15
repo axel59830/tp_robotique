@@ -28,6 +28,7 @@ class VuePygame:
         self.TAILLE_TUILE = 80  # pixels
         
         # Chargement des images
+        self.img_robot = self._charger_image("img/robot_mobile.png", taille=(50, 50))
         self.img_ennemi_nul = self._charger_image("img/ennemi_nul.png", taille=(40, 40))
         self.img_ennemi = self._charger_image("img/ennemi.png", taille=(45, 45))
         self.img_boss = self._charger_image("img/boss.png", taille=(80, 80))
@@ -205,21 +206,33 @@ class VuePygame:
         rx, ry = self.monde_vers_ecran(robot.x, robot.y, cam_x, cam_y)
         r = int(robot.rayon * self.scale)
 
+        # Dessiner l'ombre du robot
+        pygame.draw.circle(self.screen, (20, 20, 60), (rx, ry), r + 3)
+
+        # Dessiner l'image du robot si disponible, sinon cercle de secours
+        if self.img_robot:
+            # Centrer l'image sur la position du robot
+            img_rect = self.img_robot.get_rect(center=(rx, ry))
+            self.screen.blit(self.img_robot, img_rect)
+        else:
+            # Cercle bleu de secours si l'image ne charge pas
+            if robot.shield_actif:
+                couleur_robot = (0, 200, 255)
+            elif robot.cooldown_degats > 0 and int(robot.cooldown_degats * 10) % 2 == 0:
+                couleur_robot = (180, 80, 80)
+            else:
+                couleur_robot = (60, 140, 255)
+            pygame.draw.circle(self.screen, couleur_robot, (rx, ry), r)
+
+        # Dessiner l'aura du shield si actif
         if robot.shield_actif:
             aura_r = r + 10 + int(5 * math.sin(pygame.time.get_ticks() * 0.008))
             surf_aura = pygame.Surface((self.largeur, self.hauteur), pygame.SRCALPHA)
             pygame.draw.circle(surf_aura, (80, 180, 255, 80), (rx, ry), aura_r)
             pygame.draw.circle(surf_aura, (150, 220, 255, 180), (rx, ry), aura_r, 3)
             self.screen.blit(surf_aura, (0, 0))
-            couleur_robot = (0, 200, 255)
-        elif robot.cooldown_degats > 0 and int(robot.cooldown_degats * 10) % 2 == 0:
-            couleur_robot = (180, 80, 80)
-        else:
-            couleur_robot = (60, 140, 255)
 
-        pygame.draw.circle(self.screen, (20, 20, 60), (rx, ry), r + 3)  # ombre
-        pygame.draw.circle(self.screen, couleur_robot, (rx, ry), r)
-
+        # Dessiner la direction du robot
         x_dir = rx + int((r + 10) * math.cos(robot.orientation))
         y_dir = ry - int((r + 10) * math.sin(robot.orientation))
         pygame.draw.line(self.screen, (255, 60, 60), (rx, ry), (x_dir, y_dir), 3)

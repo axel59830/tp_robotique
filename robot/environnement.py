@@ -405,6 +405,8 @@ class Environnement:
                 if isinstance(item, ItemExperience):
                     montee = self.robot.ajouter_experience(item.valeur)
                     if montee:
+                        self.en_pause_upgrade = True
+                        self.generer_choix_ameliorations()
                         if self.robot.niveau_est_multiple_de_3():
                             self.en_pause_arme = True
                             self.generer_choix_armes()
