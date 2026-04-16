@@ -519,7 +519,7 @@ class VuePygame:
 
     def dessiner_menu_arme(self, environnement):
         self._dessiner_overlay()
-        bx, by, bw, bh = self._boite_menu(470)
+        bx, by, bw, bh = self._boite_menu(400)
         self._dessiner_boite(bx, by, bw, bh, couleur_bordure=(180, 120, 0))
         titre = self.big_font.render("★  Arme Spéciale  ★", True, (180, 120, 0))
         self.screen.blit(titre, titre.get_rect(centerx=bx + bw // 2, y=by + 20))
