@@ -13,15 +13,15 @@ class ControleurIA(Controleur):
     """
 
     # Paramètres d'esquive optimisés pour meilleure réactivité
-    RAYON_DANGER_PROJ_BASE   = 5.0   # rayon de détection augmenté
-    TEMPS_REACTION_PROJ_BASE = 3.0   # fenêtre de réaction augmentée
-    CONE_DANGER_PROJ_BASE    = 0.8   # cône de danger élargi
-    SEUIL_ESQUIVE_BASE       = 0.15  # seuil plus sensible
+    RAYON_DANGER_PROJ_BASE   = 6.0   # rayon de détection augmenté
+    TEMPS_REACTION_PROJ_BASE = 3.5   # fenêtre de réaction augmentée
+    CONE_DANGER_PROJ_BASE    = 0.95   # cône de danger élargi
+    SEUIL_ESQUIVE_BASE       = 0.10  # seuil plus sensible
     
     # Paramètres simplifiés
-    FACTEUR_VITESSE_ROBOT = 0.2   # influence réduite pour plus de stabilité
-    FACTEUR_DENSITE_PROJ  = 0.15  # ajustement plus modéré
-    PREDICTION_STEPS      = 6     # moins de pas pour plus de rapidité
+    FACTEUR_VITESSE_ROBOT = 0.25   # influence réduite pour plus de stabilité
+    FACTEUR_DENSITE_PROJ  = 0.20  # ajustement plus modéré
+    PREDICTION_STEPS      = 12     # moins de pas pour plus de rapidité
 
     def __init__(self, v_max=3.0, omega_max=3.5,
                  seuil_fuite=2.2, rayon_influence=4.0,
@@ -40,13 +40,21 @@ class ControleurIA(Controleur):
         self.cone_danger_proj = self.CONE_DANGER_PROJ_BASE
         self.seuil_esquive = self.SEUIL_ESQUIVE_BASE
 
+        self.mode_esquive = False
+        self.temps_esquive = 0.0
+        self.duree_esquive_min = 0.25
+
+        self.evade_x_mem = 0.0
+        self.evade_y_mem = 0.0
+
     def set_environnement(self, env):
         self.env = env
 
     def lire_commande(self):
         if self.env is None or self.env.game_over:
             return self._commande_nulle()
-        if getattr(self.env, 'en_pause_upgrade', False) or getattr(self.env, 'en_pause_arme', False):
+
+        if getattr(self.env, "en_pause_upgrade", False) or getattr(self.env, "en_pause_arme", False):
             return self._commande_nulle()
 
         robot = self.env.robot
@@ -65,33 +73,76 @@ class ControleurIA(Controleur):
 
         cible_tir = self._choisir_cible_tir(boss, ennemi_proche)
 
-        # CAS 1 : ESQUIVE AMÉLIORÉE
+        # ------------------------------------------------------------------
+        # 1) VERROU D'ESQUIVE
+        # ------------------------------------------------------------------
+        if getattr(self, "temps_esquive", 0.0) > 0.0:
+            self.temps_esquive -= 1.0 / 60.0
+            if self.temps_esquive < 0.0:
+                self.temps_esquive = 0.0
+
+        if getattr(self, "temps_esquive", 0.0) > 0.0:
+            return self._commande_esquive(
+                robot,
+                self.evade_x_mem,
+                self.evade_y_mem,
+                1.0,
+                None
+            )
+
+        # ------------------------------------------------------------------
+        # 2) NOUVELLE ESQUIVE
+        # ------------------------------------------------------------------
         self._mettre_a_jour_parametres_adaptatifs(robot)
         evade_x, evade_y, force = self._vecteur_esquive_ameliore(robot)
-        if force > self.seuil_esquive:
-            return self._commande_esquive(robot, evade_x, evade_y, force, cible_tir)
 
-        # CAS 1.5 : ZONE CAPTURABLE (priorité haute)
-        if getattr(self.env, 'zone_capturable', None) and self.env.zone_capturable.actif:
+        if force > self.seuil_esquive:
+            self.evade_x_mem = evade_x
+            self.evade_y_mem = evade_y
+            self.temps_esquive = self.duree_esquive_min
+            return self._commande_esquive(robot, evade_x, evade_y, force, None)
+
+        # ------------------------------------------------------------------
+        # 3) FIN DE MANCHE : ALLER CHERCHER LES ITEMS MÊME LOIN
+        # ------------------------------------------------------------------
+        plus_d_ennemis = (
+            ennemi_proche is None
+            and (boss is None)
+        )
+
+        if plus_d_ennemis and item_proche is not None:
+            return self._commande_vers_item(robot, item_proche, None)
+
+        # ------------------------------------------------------------------
+        # 4) ZONE CAPTURABLE
+        # ------------------------------------------------------------------
+        if getattr(self.env, "zone_capturable", None) and self.env.zone_capturable.actif:
             zone = self.env.zone_capturable
             dist_zone = math.hypot(zone.x - robot.x, zone.y - robot.y)
-            
-            # Si le robot n'est pas dans la zone, se diriger vers elle
+
             if dist_zone > zone.rayon + robot.rayon:
                 return self._commande_vers_zone(robot, zone, cible_tir)
 
-        # CAS 2 : FUITE MASSE
+        # ------------------------------------------------------------------
+        # 5) FUITE MASSE
+        # ------------------------------------------------------------------
         fuite_x, fuite_y, pression = self._vecteur_fuite()
         if pression > 0.6:
             return self._commande_fuite(robot, fuite_x, fuite_y, cible_tir)
 
-        # CAS 3 : ITEM
-        if (item_proche is not None
-                and dist_item < self.distance_attraction_item
-                and dist_ennemi > self.seuil_danger_item):
+        # ------------------------------------------------------------------
+        # 6) ITEM PROCHE SI ZONE ASSEZ SÛRE
+        # ------------------------------------------------------------------
+        if (
+            item_proche is not None
+            and dist_item < self.distance_attraction_item
+            and dist_ennemi > self.seuil_danger_item
+        ):
             return self._commande_vers_item(robot, item_proche, cible_tir)
 
-        # CAS 4 : ATTAQUE
+        # ------------------------------------------------------------------
+        # 7) ATTAQUE
+        # ------------------------------------------------------------------
         if cible_tir is not None:
             dist_sec = 2.5 if cible_tir is boss else 0.5
             return self._commande_vers_cible(robot, cible_tir, dist_sec)
@@ -181,7 +232,7 @@ class ControleurIA(Controleur):
     
     def _predire_collision(self, robot, proj):
         """Prédiction simplifiée et plus rapide."""
-        dt = 0.08  # Pas plus grand pour plus de rapidité
+        dt = 0.06  # Pas plus grand pour plus de rapidité
         
         for i in range(self.PREDICTION_STEPS):
             t = i * dt
@@ -288,21 +339,24 @@ class ControleurIA(Controleur):
         return px, py
 
     def _commande_esquive(self, robot, evade_x, evade_y, force, cible_tir):
-        """Déplacement d'esquive plus réactif."""
-        omega, tirer = self._orienter_vers(robot, cible_tir)
-
         angle_esquive = math.atan2(evade_y, evade_x)
         diff = self._normaliser_angle(angle_esquive - robot.orientation)
 
-        # Vitesse boostée pour esquive plus rapide
-        vitesse = min(self.v_max * 1.4, self.v_max * (1.0 + force * 0.4))
-        
-        # Logique simplifiée : toujours aller dans la direction d'esquive
-        if abs(diff) < math.pi / 2:
-            v = vitesse
+        if abs(diff) > 0.08:
+            omega = self.omega_max if diff > 0 else -self.omega_max
         else:
-            v = -vitesse * 0.8  # Recul moins rapide
+            omega = 0.0
 
+        vitesse = min(self.v_max * 1.3, self.v_max * (1.0 + 0.3 * min(force, 1.5)))
+
+        if abs(diff) < 0.20:
+            v = vitesse
+        elif abs(diff) < 0.50:
+            v = vitesse * 0.25
+        else:
+            v = 0.0
+
+        tirer = False
         return self._cmd(v, omega, tirer)
 
     def _commande_fuite(self, robot, fuite_x, fuite_y, cible_tir):

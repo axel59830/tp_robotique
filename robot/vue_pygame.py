@@ -519,7 +519,7 @@ class VuePygame:
 
     def dessiner_menu_arme(self, environnement):
         self._dessiner_overlay()
-        bx, by, bw, bh = self._boite_menu(360)
+        bx, by, bw, bh = self._boite_menu(470)
         self._dessiner_boite(bx, by, bw, bh, couleur_bordure=(180, 120, 0))
         titre = self.big_font.render("★  Arme Spéciale  ★", True, (180, 120, 0))
         self.screen.blit(titre, titre.get_rect(centerx=bx + bw // 2, y=by + 20))
@@ -555,8 +555,7 @@ class VuePygame:
             
             self.screen.blit(self.font.render(texte_arme, True, couleur_texte), (bx + 60, yy + 10))
             self.screen.blit(self.small_font.render(description, True, (80, 60, 40)), (bx + 60, yy + 42))
-        self.screen.blit(self.small_font.render("Clique sur une arme", True, (100, 70, 0)),
-                         (bx + 195, by + bh - 40))
+        
 
     def _boite_menu(self, hauteur):
         bw, bh = 560, hauteur

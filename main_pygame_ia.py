@@ -12,10 +12,10 @@ def main():
     env.ajouter_robot(robot)
 
     controleur = ControleurIA(
-        v_max=3.0,
-        omega_max=3.5,
-        seuil_fuite=2.2,
-        rayon_influence=4.0,
+        v_max=3.4,
+        omega_max=4.4,
+        seuil_fuite=2.0,
+        rayon_influence=4.2,
         distance_attraction_item=3.5,
     )
     controleur.set_environnement(env)
